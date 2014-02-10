@@ -7,18 +7,21 @@ import java.net.SocketException;
 /**
  * Created by jtk on 2/10/14.
  */
-public class Watcher implements Runnable {
-    Socket socket;
+public class Watcher extends Thread {
+    private final Socket socket;
+    private final int numPackets;
     BufferedReader bufferedReader;
+    private int countPackets = 0;
 
-    public Watcher(Socket socket) {
+    public Watcher(Socket socket, int numPackets) {
         this.socket = socket;
+        this.numPackets = numPackets;
+
         try {
             bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         } catch (IOException e) {
             e.printStackTrace();
         }
-        new Thread(this).start();
     }
 
     public void run() {
@@ -26,6 +29,9 @@ public class Watcher implements Runnable {
             try {
                 String line = bufferedReader.readLine();
                 System.out.printf("RECEIVED: %s\n", line);
+                Client.totalCount.incrementAndGet(); // includes Tick packets
+                if (line.startsWith("Thank")  && ++countPackets >= numPackets)
+                    return;
             } catch (IOException e) {
                 assert SocketException.class.isInstance(e);  // assert underlying socket is closed
                 return;

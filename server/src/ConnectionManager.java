@@ -68,6 +68,7 @@ public class ConnectionManager implements Runnable {
             Message m = outgoingMessages.remove();
             m.connection.outgoingString.append(m.string);
             m.connection.outgoingString.append("\n");
+            System.err.printf("SENDING: '%s'\n", m.string);
             try {
                 m.connection.channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, m.connection);
             } catch (ClosedChannelException e) {

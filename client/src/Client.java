@@ -1,36 +1,65 @@
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
+import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by jtk on 2/8/14.
  */
-public class Client {
+public class Client implements Runnable {
+    private final static int numClients = 100;
+    private final static int numPackets = 1000;
+
     final static String serverLocation = "localhost";
     final static int portLocation = 1111;
 
-    public static void main(String args[]) {
+    int id;
+    int nPackets;
 
-        new Client().run();
+    public static AtomicInteger totalCount = new AtomicInteger(0);
+
+    public static void main(String args[]) {
+        Thread[] clients = new Thread[numClients];
+
+        for (int i = 0; i < numClients; i++) {
+            clients[i] = new Thread(new Client(i+1, numPackets));
+            clients[i].start();
+        }
+
+        for (int i = 0; i < numClients; i++)
+            try {
+                clients[i].join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+        System.out.printf("Test complete: %d packets expected, %d packets received\n",
+                numClients * numPackets, totalCount.get());
+    }
+
+    public Client(int id, int nPackets) {
+        this.id = id;
+        this.nPackets = nPackets;
     }
 
     public void run() {
-        System.out.println("client starting");
+        System.out.printf("client %d starting: generating %d packets\n", id, nPackets);
 
         try {
             Socket socket = new Socket(serverLocation, portLocation);
-            Watcher watcher = new Watcher(socket);
-
             OutputStreamWriter outputStreamWriter = new OutputStreamWriter(socket.getOutputStream());
-            outputStreamWriter.write("first message from client\n"); outputStreamWriter.flush();
 
-            Thread.sleep(5000);
+            Watcher watcher = new Watcher(socket, nPackets);
+            watcher.start();
 
-            outputStreamWriter.write("last message from client\n"); outputStreamWriter.flush();
+            for (int i = 0; i < nPackets; i++) {
+                outputStreamWriter.write(String.format("client %d packet %d\n", id, i + 1));
+                outputStreamWriter.flush();
+            }
 
-            Thread.sleep(10000);
-
-            outputStreamWriter.close();
+            watcher.join();
+            socket.close();
         } catch (IOException e) {
             e.printStackTrace();
         } catch (InterruptedException e) {
