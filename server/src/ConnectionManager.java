@@ -27,26 +27,16 @@ public class ConnectionManager implements Runnable {
         selector.wakeup();
     }
 
-    private void stageOutgoingMessages() {
-        while (!outgoingMessages.isEmpty()) {
-            Message m = outgoingMessages.remove();
-            m.connection.outgoingString.append(m.string);
-            m.connection.outgoingString.append("\n");
-            try {
-                m.connection.channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, m.connection);
-            } catch (ClosedChannelException e) {
-                e.printStackTrace();
-                System.err.printf("CLOSED channel %s\n", m.connection.channel);
-            }
+    public void broadcast(String s) {  // TODO: this method is not running on the CM thread; check races
+        for (SelectionKey key : selector.keys()) {
+            Connection c = (Connection) key.attachment();
+            if (c != null) // the server socket has no Connection attachment
+                send(c, s);
         }
     }
 
     public Message getNextMessage() throws InterruptedException {
         return incomingMessages.take();
-    }
-
-    private void handle(String s, Connection connection) {
-        send(connection, s.toUpperCase());
     }
 
     public void run() {
@@ -71,6 +61,20 @@ public class ConnectionManager implements Runnable {
             e.printStackTrace();
         }
         System.err.print("shouldn't get here\n");
+    }
+
+    private void stageOutgoingMessages() {
+        while (!outgoingMessages.isEmpty()) {
+            Message m = outgoingMessages.remove();
+            m.connection.outgoingString.append(m.string);
+            m.connection.outgoingString.append("\n");
+            try {
+                m.connection.channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, m.connection);
+            } catch (ClosedChannelException e) {
+                e.printStackTrace();
+                System.err.printf("CLOSED channel %s\n", m.connection.channel);
+            }
+        }
     }
 
     private void processSelectorEvents(ServerSocketChannel serverSocketChannel) throws IOException {
@@ -107,7 +111,7 @@ public class ConnectionManager implements Runnable {
     }
 
     private void processRead(SelectionKey key) throws IOException {
-        final ByteBuffer buffer = ByteBuffer.wrap(new byte[48]);
+        final ByteBuffer buffer = ByteBuffer.wrap(new byte[500]);
         SocketChannel socketChannel = (SocketChannel) key.channel();
         buffer.clear();
         int charsRead = socketChannel.read(buffer);
@@ -127,7 +131,6 @@ public class ConnectionManager implements Runnable {
                 if (c == '\r') // ignore carriage returns
                     ;
                 else if (c == '\n') {
-                    handle(sb.toString(), cd);
                     incomingMessages.add(new Message(sb.toString(), cd));
                     System.err.printf("READ: '%s' from %s\n", sb.toString(), socketChannel);
                     sb.setLength(0);
@@ -142,13 +145,5 @@ public class ConnectionManager implements Runnable {
         socketChannel.configureBlocking(false);
         socketChannel.register(selector, SelectionKey.OP_READ, new Connection(socketChannel));
         System.err.printf("ACCEPT: %s (socket size = %d)\n", socketChannel.toString(), socketChannel.socket().getSendBufferSize());
-    }
-
-    public void broadcast(String s) {  // TODO: this method is not running on the CM thread; check races
-        for (SelectionKey key : selector.keys()) {
-            Connection c = (Connection) key.attachment();
-            if (c != null)
-                send(c, s);
-        }
     }
 }
