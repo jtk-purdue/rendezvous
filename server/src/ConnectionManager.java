@@ -53,9 +53,12 @@ public class ConnectionManager implements Runnable {
     public void broadcast(String s) {  // TODO: this method is not running on the CM thread; check races
         for (SelectionKey key : selector.keys()) {
             Connection c = (Connection) key.attachment();
-            if (c != null) // the server socket has no Connection attachment
-                send(c, s);
+            if (c != null) { // the server socket has no Connection attachment
+                outgoingMessages.add(new Message(s, c));
+                LOGGER.info(String.format("STILL ALIVE: %s", c.remote));
+            }
         }
+        selector.wakeup();
     }
 
     public Message getNextMessage() throws InterruptedException {
@@ -106,13 +109,13 @@ public class ConnectionManager implements Runnable {
 
         while (keyIterator.hasNext()) {
             SelectionKey key = keyIterator.next();
-            if (key.isAcceptable())
+            if (key.isValid() && key.isAcceptable())
                 processAccept(serverSocketChannel);
-            else if (key.isConnectable())
+            if (key.isValid() && key.isConnectable())
                 LOGGER.severe("CONNECT: why?\n");
-            else if (key.isReadable())
+            if (key.isValid() && key.isReadable())
                 processRead(key);
-            else if (key.isWritable())
+            if (key.isValid() && key.isWritable())
                 processWrite(key);
             keyIterator.remove();
         }
