@@ -28,10 +28,17 @@ public class Watcher extends Thread {
         while (!socket.isOutputShutdown()) {
             try {
                 String line = bufferedReader.readLine();
-                System.out.printf("RECEIVED: %s\n", line);
-                Client.totalCount.incrementAndGet(); // includes Tick packets
-                if (line.startsWith("Thank")  && ++countPackets >= numPackets)
-                    return;
+//                System.out.printf("RECEIVED: %s\n", line);
+                if (line.startsWith("received")) {
+                    Client.totalCount.incrementAndGet();
+                    String[] fields = line.split(" ");
+                    int c = Integer.parseInt(fields[1]);
+                    assert c == fields[2].length();
+                    if (++countPackets == numPackets) {
+                        System.out.printf("RECEIVED all %d packets\n", numPackets);
+                        return;
+                    }
+                }
             } catch (IOException e) {
                 assert SocketException.class.isInstance(e);  // assert underlying socket is closed
                 return;

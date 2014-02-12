@@ -2,22 +2,45 @@
  * Created by jtk on 2/8/14.
  */
 
+import java.io.Console;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
+import java.text.DateFormat;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.logging.*;
 
 public class ConnectionManager implements Runnable {
+    private static Logger LOGGER = Logger.getLogger(ConnectionManager.class.getName());
     private int port;
     private Selector selector;
     private LinkedBlockingQueue<Message> incomingMessages = new LinkedBlockingQueue<Message>();
     private ConcurrentLinkedQueue<Message> outgoingMessages = new ConcurrentLinkedQueue<Message>();
 
     public ConnectionManager(int port) {
+        LogManager.getLogManager().reset();
+        LOGGER.setLevel(Level.INFO);
+        Handler handler = new ConsoleHandler();
+        Formatter formatter = new Formatter() {
+            @Override
+            public String format(LogRecord logRecord) {
+                final StringBuffer sb = new StringBuffer();
+                sb.setLength(0);
+                sb.append(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(logRecord.getMillis()));
+                sb.append(": ");
+                sb.append(logRecord.getLevel().toString());
+                sb.append(" - ");
+                sb.append(logRecord.getMessage());
+                sb.append("\n");
+                return sb.toString();
+            }
+        };
+        handler.setFormatter(formatter);
+        LOGGER.addHandler(handler);
         this.port = port;
         new Thread(this).start();
     }
@@ -42,7 +65,7 @@ public class ConnectionManager implements Runnable {
     public void run() {
         ServerSocketChannel serverSocketChannel;
 
-        System.out.println("server starting");
+        LOGGER.info("server starting");
 
         try {
             selector = Selector.open();
@@ -50,7 +73,7 @@ public class ConnectionManager implements Runnable {
             serverSocketChannel = ServerSocketChannel.open();
             serverSocketChannel.configureBlocking(false);
             serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT); // ignoring SelectionKey returned
-            serverSocketChannel.socket().bind(new InetSocketAddress(port));
+            serverSocketChannel.socket().bind(new InetSocketAddress(port), 1000);  // TODO: Limit likely being ignored.
 
             while (true) {
                 selector.select();
@@ -59,8 +82,8 @@ public class ConnectionManager implements Runnable {
             }
         } catch (IOException e) {
             e.printStackTrace();
+            LOGGER.severe("SHOULDN'T GET HERE: server shutting down");
         }
-        System.err.print("shouldn't get here\n");
     }
 
     private void stageOutgoingMessages() {
@@ -68,17 +91,16 @@ public class ConnectionManager implements Runnable {
             Message m = outgoingMessages.remove();
             m.connection.outgoingString.append(m.string);
             m.connection.outgoingString.append("\n");
-            System.err.printf("SENDING: '%s'\n", m.string);
+            LOGGER.info(String.format("SENDING: '%s'", m.string));
             try {
                 m.connection.channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, m.connection);
             } catch (ClosedChannelException e) {
-                e.printStackTrace();
-                System.err.printf("CLOSED channel %s\n", m.connection.channel);
+                LOGGER.warning(String.format("CLOSED channel to %s", m.connection.remote));
             }
         }
     }
 
-    private void processSelectorEvents(ServerSocketChannel serverSocketChannel) throws IOException {
+    private void processSelectorEvents(ServerSocketChannel serverSocketChannel) {
         Set<SelectionKey> selectedKeys = selector.selectedKeys();
         Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
@@ -87,7 +109,7 @@ public class ConnectionManager implements Runnable {
             if (key.isAcceptable())
                 processAccept(serverSocketChannel);
             else if (key.isConnectable())
-                System.err.printf("CONNECT: why?\n");
+                LOGGER.severe("CONNECT: why?\n");
             else if (key.isReadable())
                 processRead(key);
             else if (key.isWritable())
@@ -96,34 +118,66 @@ public class ConnectionManager implements Runnable {
         }
     }
 
-    private void processWrite(SelectionKey key) throws IOException {
-        Connection cd = (Connection) key.attachment();
-        while (cd.outgoingBuffer.position() < cd.outgoingBuffer.limit() && cd.outgoingString.length() > 0) {
-            cd.outgoingBuffer.put((byte) cd.outgoingString.charAt(0));
-            cd.outgoingString.deleteCharAt(0);
+    private void processWrite(SelectionKey key) {
+        Connection connection = (Connection) key.attachment();
+        while (connection.outgoingBuffer.position() < connection.outgoingBuffer.limit() && connection.outgoingString.length() > 0) {
+            connection.outgoingBuffer.put((byte) connection.outgoingString.charAt(0));
+            connection.outgoingString.deleteCharAt(0);
         }
-        cd.outgoingBuffer.flip();
-        if (cd.outgoingBuffer.hasRemaining()) {
-            cd.channel.write(cd.outgoingBuffer);
+        connection.outgoingBuffer.flip();
+        boolean fConnectionClosed = false; // TODO: Hack to avoid registering on a closed channel (below)
+        if (connection.outgoingBuffer.hasRemaining()) {
+            try {
+                connection.channel.write(connection.outgoingBuffer);
+            } catch (IOException e) {
+                LOGGER.warning(String.format("WRITE ERROR '%s' to %s", e.getMessage(), connection.remote));
+                fConnectionClosed = true;
+                try {
+                    connection.channel.close();
+                } catch (IOException e1) {
+                    e1.printStackTrace();
+                }
+            }
         }
-        cd.outgoingBuffer.compact();
-        if (!cd.outgoingBuffer.hasRemaining())
-            cd.channel.register(selector, SelectionKey.OP_READ, cd);
+        connection.outgoingBuffer.compact();
+        if (!fConnectionClosed && !connection.outgoingBuffer.hasRemaining())
+            try {
+                connection.channel.register(selector, SelectionKey.OP_READ, connection);
+            } catch (ClosedChannelException e) {
+                e.printStackTrace();
+            }
     }
 
-    private void processRead(SelectionKey key) throws IOException {
+    private void processRead(SelectionKey key) {
         final ByteBuffer buffer = ByteBuffer.wrap(new byte[500]);
         SocketChannel socketChannel = (SocketChannel) key.channel();
         buffer.clear();
-        int charsRead = socketChannel.read(buffer);
+        int charsRead = 0;
+        boolean fConnectionClosed = false; // TODO: Another sort of hack (below)
+        try {
+            charsRead = socketChannel.read(buffer);
+        } catch (IOException e) {
+            Connection connection = (Connection) key.attachment();
+            LOGGER.warning(String.format("READ ERROR '%s' from %s", e.getMessage(), connection.remote));
+            fConnectionClosed = true;
+            try {
+                socketChannel.close(); // TODO: Cleanup
+            } catch (IOException e1) {
+                e1.printStackTrace();
+            }
+        }
         buffer.flip();
 
         if (charsRead == -1) {
-            System.err.printf("EOF: closing channel\n");
-            socketChannel.close();
+//            System.out.printf("EOF: closing channel\n");
+            if (!fConnectionClosed) {
+                try {
+                    socketChannel.shutdownInput();  // TODO: Not clear whether this is needed or should be just close()
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
         } else {
-            System.err.printf("BYTES: %d\n", charsRead);
-
             Connection cd = (Connection) key.attachment();
             StringBuffer sb = cd.incomingString;
 
@@ -133,7 +187,7 @@ public class ConnectionManager implements Runnable {
                     ;
                 else if (c == '\n') {
                     incomingMessages.add(new Message(sb.toString(), cd));
-                    System.err.printf("READ: '%s' from %s\n", sb.toString(), socketChannel);
+                    LOGGER.info(String.format("READ: '%s' from %s", sb.toString(), socketChannel));
                     sb.setLength(0);
                 } else
                     sb.append(c);
@@ -141,10 +195,14 @@ public class ConnectionManager implements Runnable {
         }
     }
 
-    private void processAccept(ServerSocketChannel serverSocketChannel) throws IOException {
-        SocketChannel socketChannel = serverSocketChannel.accept();
-        socketChannel.configureBlocking(false);
-        socketChannel.register(selector, SelectionKey.OP_READ, new Connection(socketChannel));
-        System.err.printf("ACCEPT: %s (socket size = %d)\n", socketChannel.toString(), socketChannel.socket().getSendBufferSize());
+    private void processAccept(ServerSocketChannel serverSocketChannel) {
+        try {
+            SocketChannel socketChannel = serverSocketChannel.accept();
+            socketChannel.configureBlocking(false);
+            socketChannel.register(selector, SelectionKey.OP_READ, new Connection(socketChannel));
+            LOGGER.info(String.format("ACCEPT: %s (socket size = %d)", socketChannel.toString(), socketChannel.socket().getSendBufferSize()));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }

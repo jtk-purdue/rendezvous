@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Created by jtk on 2/8/14.
  */
 public class Client implements Runnable {
-    private final static int numClients = 100;
+    private final static int numClients = 1000;
     private final static int numPackets = 1000;
 
     final static String serverLocation = "localhost";
@@ -20,6 +20,24 @@ public class Client implements Runnable {
     public static AtomicInteger totalCount = new AtomicInteger(0);
 
     public static void main(String args[]) {
+//        Socket[] sockets = new Socket[numClients];
+//        for (int i = 0; i < numClients; i++) {
+////            System.out.printf("opening %d\n", i);
+//            try {
+//                sockets[i] = new Socket(serverLocation, portLocation);
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//        }
+//
+//        System.out.printf("all sockets open; you have 5 seconds\n");
+//        try {
+//            Thread.sleep(5000);
+//        } catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
+
+
         Thread[] clients = new Thread[numClients];
 
         for (int i = 0; i < numClients; i++) {
@@ -44,7 +62,7 @@ public class Client implements Runnable {
     }
 
     public void run() {
-        System.out.printf("client %d starting: generating %d packets\n", id, nPackets);
+//        System.out.printf("client %d starting: generating %d packets\n", id, nPackets);
 
         try {
             Socket socket = new Socket(serverLocation, portLocation);
@@ -53,15 +71,19 @@ public class Client implements Runnable {
             Watcher watcher = new Watcher(socket, nPackets);
             watcher.start();
 
+            Thread.sleep(1000);
+
             for (int i = 0; i < nPackets; i++) {
-                outputStreamWriter.write(String.format("client %d packet %d\n", id, i + 1));
+                outputStreamWriter.write(String.format("message %d %d 5 xxxxx\n", i + 1, nPackets));
                 outputStreamWriter.flush();
             }
 
             watcher.join();
             socket.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.printf("CLIENT %d FAILED TO START\n", id, nPackets);
+//            e.printStackTrace();
+//            System.exit(id);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
