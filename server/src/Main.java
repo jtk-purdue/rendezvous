@@ -1,7 +1,9 @@
+import edu.purdue.cs.rendezvous.ConnectionManager;
+import edu.purdue.cs.rendezvous.Connection;
+import edu.purdue.cs.rendezvous.Message;
+
 import java.text.DateFormat;
 import java.util.HashMap;
-import java.util.Observable;
-import java.util.Observer;
 import java.util.logging.*;
 
 /**
@@ -15,7 +17,9 @@ public class Main {
     ConnectionManager connectionManager;
 
     public void run() {
-        // Set up logging...
+        /**
+         * Set up logging...
+         */
         LogManager.getLogManager().reset();
         Logger logger = Logger.getLogger(Main.class.getName());
         Logger loggerParent = logger.getParent();  // get root or global logger (why is not clear to me)
@@ -43,10 +47,9 @@ public class Main {
         loggerParent.addHandler(handler);
         logger.info("Logging configuration complete");
 
-        // Open connection manager...
-        connectionManager = new ConnectionManager(1111);
-        new Thread(new EventManager()).start();
-
+        /**
+         * Create a ConnectionData structure and hash to keep track of connections...
+         */
         class ConnectionData {
             int next; // next message number expected from this connection
             int last; // last message number expected from this connection
@@ -56,28 +59,55 @@ public class Main {
                 this.last = last;
             }
         }
-
         HashMap<Connection, ConnectionData> info = new HashMap<Connection, ConnectionData>();
 
+        /**
+         * Create ConnectionManager...
+         */
+        connectionManager = new ConnectionManager(1111);
+
+        /**
+         * Start broadcaster to generate broadcast traffic...
+         */
+        Runnable broadcaster = new Runnable() {
+            @Override
+            public void run() {
+                int n = 0;
+
+                while (true) {
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    connectionManager.broadcast(String.format("broadcast %d", ++n));
+                }
+            }
+        };
+        new Thread(broadcaster).start();
+
+        /**
+         * Process incoming traffic from clients; generate outgoing traffic...
+         */
         while (true) {
             try {
                 Message message = connectionManager.getNextMessage();
+                Connection connection = message.getConnection();
 
                 // message format indicating nth of m messages with c additional non-blank characters...
                 // message n m c xxx...
 
-                String[] fields = message.string.split(" ");
-                // System.out.printf("RECEIVED: %s (%d fields)\n", message.string, fields.length);
+                String[] fields = message.getString().split(" ");
                 int n = Integer.parseInt(fields[1]);
                 int m = Integer.parseInt(fields[2]);
                 int c = Integer.parseInt(fields[3]);
 
                 ConnectionData cd = null;
-                if (info.containsKey(message.connection))
-                    cd = info.get(message.connection);
+                if (info.containsKey(connection))
+                    cd = info.get(connection);
                 else {
                     cd = new ConnectionData(1, m);
-                    info.put(message.connection, cd);
+                    info.put(connection, cd);
                 }
 
                 assert fields[0].equals("message");
@@ -87,25 +117,9 @@ public class Main {
 
                 cd.next++;
 
-                connectionManager.send(message.connection, String.format("received %d %s", c, fields[4]));
+                connectionManager.send(connection, String.format("received %d %s", c, fields[4]));
             } catch (InterruptedException e) {
                 e.printStackTrace();
-            }
-        }
-    }
-
-    class EventManager implements Runnable {
-        @Override
-        public void run() {
-            int n = 0;
-
-            while (true) {
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                connectionManager.broadcast(String.format("broadcast %d", ++n));
             }
         }
     }

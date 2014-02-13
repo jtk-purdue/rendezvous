@@ -1,3 +1,5 @@
+package edu.purdue.cs.rendezvous;
+
 /**
  * Created by jtk on 2/8/14.
  */
@@ -21,7 +23,7 @@ public class ConnectionManager implements Runnable {
 
     public ConnectionManager(int port) {
         logger = Logger.getLogger(ConnectionManager.class.getName());
-        logger.info("Logger created in ConnectionManager");
+        logger.info("Logger created in edu.purdue.cs.rendezvous.ConnectionManager");
         this.port = port;
         new Thread(this).start();
     }
@@ -31,15 +33,8 @@ public class ConnectionManager implements Runnable {
         selector.wakeup();
     }
 
-    public void broadcast(String s) {  // TODO: this method is not running on the CM thread; check races
-        for (SelectionKey key : selector.keys()) {
-            Connection c = (Connection) key.attachment();
-            if (c != null) { // the server socket has no Connection attachment
-                outgoingMessages.add(new Message(s, c));
-                logger.info(String.format("STILL ALIVE: %s", c.remote));
-            }
-        }
-        selector.wakeup();
+    public void broadcast(String s) {
+        outgoingMessages.add(new Message(s, null)); // null indicates broadcast message
     }
 
     public Message getNextMessage() throws InterruptedException {
@@ -72,15 +67,27 @@ public class ConnectionManager implements Runnable {
 
     private void stageOutgoingMessages() {
         while (!outgoingMessages.isEmpty()) {
-            Message m = outgoingMessages.remove();
-            m.connection.outgoingString.append(m.string);
-            m.connection.outgoingString.append("\n");
-            logger.info(String.format("SENDING: '%s'", m.string));
-            try {
-                m.connection.channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, m.connection);
-            } catch (ClosedChannelException e) {
-                logger.warning(String.format("CLOSED channel to %s", m.connection.remote));
-            }
+            Message message = outgoingMessages.remove();
+            Connection connection = message.getConnection();
+            if (connection == null) // handle broadcast message
+                for (SelectionKey key : selector.keys()) {
+                    connection = (Connection) key.attachment();
+                    if (connection != null)  // ensure connection is a client socket, not server socket
+                        stageOneOutgoingMessage(message, connection);
+                }
+            else
+                stageOneOutgoingMessage(message, connection);
+        }
+    }
+
+    private void stageOneOutgoingMessage(Message message, Connection connection) {
+        connection.outgoingString.append(message.getString());
+        connection.outgoingString.append("\n");
+        logger.info(String.format("SENDING: '%s'", message.getString()));
+        try {
+            connection.channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, connection);
+        } catch (ClosedChannelException e) {
+            logger.warning(String.format("CLOSED channel to %s", connection.remote));
         }
     }
 
