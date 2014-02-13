@@ -1,6 +1,8 @@
+import java.text.DateFormat;
 import java.util.HashMap;
 import java.util.Observable;
 import java.util.Observer;
+import java.util.logging.*;
 
 /**
  * Created by jtk on 2/10/14.
@@ -13,6 +15,35 @@ public class Main {
     ConnectionManager connectionManager;
 
     public void run() {
+        // Set up logging...
+        LogManager.getLogManager().reset();
+        Logger logger = Logger.getLogger(Main.class.getName());
+        Logger loggerParent = logger.getParent();  // get root or global logger (why is not clear to me)
+        loggerParent.setLevel(Level.INFO);
+        Handler handler = new ConsoleHandler();
+        Formatter formatter = new Formatter() {
+            @Override
+            public String format(LogRecord logRecord) {
+                final StringBuffer sb = new StringBuffer();
+                sb.setLength(0);
+                sb.append(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM).format(logRecord.getMillis()));
+                sb.append(": ");
+                sb.append(logRecord.getLevel().toString());
+                sb.append(" - ");
+                sb.append(logRecord.getMessage());
+                sb.append(" (");
+                sb.append(logRecord.getSourceClassName());
+                sb.append(".");
+                sb.append(logRecord.getSourceMethodName());
+                sb.append(")\n");
+                return sb.toString();
+            }
+        };
+        handler.setFormatter(formatter);
+        loggerParent.addHandler(handler);
+        logger.info("Logging configuration complete");
+
+        // Open connection manager...
         connectionManager = new ConnectionManager(1111);
         new Thread(new EventManager()).start();
 

@@ -2,12 +2,10 @@
  * Created by jtk on 2/8/14.
  */
 
-import java.io.Console;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
-import java.text.DateFormat;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -15,32 +13,15 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.*;
 
 public class ConnectionManager implements Runnable {
-    private static Logger LOGGER = Logger.getLogger(ConnectionManager.class.getName());
+    private Logger logger;
     private int port;
     private Selector selector;
     private LinkedBlockingQueue<Message> incomingMessages = new LinkedBlockingQueue<Message>();
     private ConcurrentLinkedQueue<Message> outgoingMessages = new ConcurrentLinkedQueue<Message>();
 
     public ConnectionManager(int port) {
-        LogManager.getLogManager().reset();
-        LOGGER.setLevel(Level.INFO);
-        Handler handler = new ConsoleHandler();
-        Formatter formatter = new Formatter() {
-            @Override
-            public String format(LogRecord logRecord) {
-                final StringBuffer sb = new StringBuffer();
-                sb.setLength(0);
-                sb.append(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(logRecord.getMillis()));
-                sb.append(": ");
-                sb.append(logRecord.getLevel().toString());
-                sb.append(" - ");
-                sb.append(logRecord.getMessage());
-                sb.append("\n");
-                return sb.toString();
-            }
-        };
-        handler.setFormatter(formatter);
-        LOGGER.addHandler(handler);
+        logger = Logger.getLogger(ConnectionManager.class.getName());
+        logger.info("Logger created in ConnectionManager");
         this.port = port;
         new Thread(this).start();
     }
@@ -55,7 +36,7 @@ public class ConnectionManager implements Runnable {
             Connection c = (Connection) key.attachment();
             if (c != null) { // the server socket has no Connection attachment
                 outgoingMessages.add(new Message(s, c));
-                LOGGER.info(String.format("STILL ALIVE: %s", c.remote));
+                logger.info(String.format("STILL ALIVE: %s", c.remote));
             }
         }
         selector.wakeup();
@@ -66,9 +47,9 @@ public class ConnectionManager implements Runnable {
     }
 
     public void run() {
-        ServerSocketChannel serverSocketChannel;
+        logger.info("server starting");
 
-        LOGGER.info("server starting");
+        ServerSocketChannel serverSocketChannel;
 
         try {
             selector = Selector.open();
@@ -85,7 +66,7 @@ public class ConnectionManager implements Runnable {
             }
         } catch (IOException e) {
             e.printStackTrace();
-            LOGGER.severe("SHOULDN'T GET HERE: server shutting down");
+            logger.severe("SHOULDN'T GET HERE: server shutting down");
         }
     }
 
@@ -94,11 +75,11 @@ public class ConnectionManager implements Runnable {
             Message m = outgoingMessages.remove();
             m.connection.outgoingString.append(m.string);
             m.connection.outgoingString.append("\n");
-            LOGGER.info(String.format("SENDING: '%s'", m.string));
+            logger.info(String.format("SENDING: '%s'", m.string));
             try {
                 m.connection.channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, m.connection);
             } catch (ClosedChannelException e) {
-                LOGGER.warning(String.format("CLOSED channel to %s", m.connection.remote));
+                logger.warning(String.format("CLOSED channel to %s", m.connection.remote));
             }
         }
     }
@@ -112,7 +93,7 @@ public class ConnectionManager implements Runnable {
             if (key.isValid() && key.isAcceptable())
                 processAccept(serverSocketChannel);
             if (key.isValid() && key.isConnectable())
-                LOGGER.severe("CONNECT: why?\n");
+                logger.severe("CONNECT: why?\n");
             if (key.isValid() && key.isReadable())
                 processRead(key);
             if (key.isValid() && key.isWritable())
@@ -133,7 +114,7 @@ public class ConnectionManager implements Runnable {
             try {
                 connection.channel.write(connection.outgoingBuffer);
             } catch (IOException e) {
-                LOGGER.warning(String.format("WRITE ERROR '%s' to %s", e.getMessage(), connection.remote));
+                logger.warning(String.format("WRITE ERROR '%s' to %s", e.getMessage(), connection.remote));
                 fConnectionClosed = true;
                 try {
                     connection.channel.close();
@@ -161,7 +142,7 @@ public class ConnectionManager implements Runnable {
             charsRead = socketChannel.read(buffer);
         } catch (IOException e) {
             Connection connection = (Connection) key.attachment();
-            LOGGER.warning(String.format("READ ERROR '%s' from %s", e.getMessage(), connection.remote));
+            logger.warning(String.format("READ ERROR '%s' from %s", e.getMessage(), connection.remote));
             fConnectionClosed = true;
             try {
                 socketChannel.close(); // TODO: Cleanup
@@ -190,7 +171,7 @@ public class ConnectionManager implements Runnable {
                     ;
                 else if (c == '\n') {
                     incomingMessages.add(new Message(sb.toString(), cd));
-                    LOGGER.info(String.format("READ: '%s' from %s", sb.toString(), socketChannel));
+                    logger.info(String.format("READ: '%s' from %s", sb.toString(), socketChannel));
                     sb.setLength(0);
                 } else
                     sb.append(c);
@@ -203,7 +184,7 @@ public class ConnectionManager implements Runnable {
             SocketChannel socketChannel = serverSocketChannel.accept();
             socketChannel.configureBlocking(false);
             socketChannel.register(selector, SelectionKey.OP_READ, new Connection(socketChannel));
-            LOGGER.info(String.format("ACCEPT: %s (socket size = %d)", socketChannel.toString(), socketChannel.socket().getSendBufferSize()));
+            logger.info(String.format("ACCEPT: %s (socket size = %d)", socketChannel.toString(), socketChannel.socket().getSendBufferSize()));
         } catch (IOException e) {
             e.printStackTrace();
         }

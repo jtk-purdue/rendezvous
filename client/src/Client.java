@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Created by jtk on 2/8/14.
  */
 public class Client implements Runnable {
-    private final static int numClients = 1000;
+    private final static int numClients = 10;
     private final static int numPackets = 1000;
 
     final static String serverLocation = "localhost";
