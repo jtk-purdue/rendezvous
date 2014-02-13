@@ -1,6 +1,5 @@
 import edu.purdue.cs.rendezvous.ConnectionManager;
 import edu.purdue.cs.rendezvous.Connection;
-import edu.purdue.cs.rendezvous.Message;
 
 import java.text.DateFormat;
 import java.util.HashMap;
@@ -59,7 +58,7 @@ public class Main {
                 this.last = last;
             }
         }
-        HashMap<Connection, ConnectionData> info = new HashMap<Connection, ConnectionData>();
+        HashMap<String, ConnectionData> info = new HashMap<String, ConnectionData>();
 
         /**
          * Create ConnectionManager...
@@ -91,33 +90,35 @@ public class Main {
          */
         while (true) {
             try {
-                Message message = connectionManager.getNextMessage();
-                Connection connection = message.getConnection();
+                String message = connectionManager.getNextMessage();
 
                 // message format indicating nth of m messages with c additional non-blank characters...
                 // message n m c xxx...
 
-                String[] fields = message.getString().split(" ");
-                int n = Integer.parseInt(fields[1]);
-                int m = Integer.parseInt(fields[2]);
-                int c = Integer.parseInt(fields[3]);
+                String[] fields = message.split(" ");
+                String remote = fields[0];
+                String command = fields[1];
+                int n = Integer.parseInt(fields[2]);
+                int m = Integer.parseInt(fields[3]);
+                int c = Integer.parseInt(fields[4]);
+                String text = fields[5];
 
                 ConnectionData cd = null;
-                if (info.containsKey(connection))
-                    cd = info.get(connection);
+                if (info.containsKey(remote))
+                    cd = info.get(remote);
                 else {
                     cd = new ConnectionData(1, m);
-                    info.put(connection, cd);
+                    info.put(remote, cd);
                 }
 
-                assert fields[0].equals("message");
+                assert command.equals("message");
                 assert cd.next == n;
                 assert cd.last == m;
-                assert c == fields[4].length();
+                assert c == text.length();
 
                 cd.next++;
 
-                connectionManager.send(connection, String.format("received %d %s", c, fields[4]));
+                connectionManager.send(remote, String.format("received %d %s", c, text));
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }

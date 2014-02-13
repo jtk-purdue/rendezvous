@@ -5,16 +5,16 @@ package edu.purdue.cs.rendezvous;
  */
 
 public class Message {
-    private Connection connection;
+    private String remote;
     private String string;
 
-    public Message(String s, Connection connection) {
-        this.string = s;
-        this.connection = connection;
+    public Message(String remote, String string) {
+        this.remote = remote;
+        this.string = string;
     }
 
-    public Connection getConnection() {
-        return connection;
+    public String getRemote() {
+        return remote;
     }
 
     public String getString() {

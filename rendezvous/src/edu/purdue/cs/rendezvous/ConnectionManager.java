@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -20,6 +21,7 @@ public class ConnectionManager implements Runnable {
     private Selector selector;
     private LinkedBlockingQueue<Message> incomingMessages = new LinkedBlockingQueue<Message>();
     private ConcurrentLinkedQueue<Message> outgoingMessages = new ConcurrentLinkedQueue<Message>();
+    private HashMap<String, Connection> connections = new HashMap<String, Connection>();
 
     public ConnectionManager(int port) {
         logger = Logger.getLogger(ConnectionManager.class.getName());
@@ -28,17 +30,18 @@ public class ConnectionManager implements Runnable {
         new Thread(this).start();
     }
 
-    public void send(Connection connection, String s) {
-        outgoingMessages.add(new Message(s, connection));
+    public void send(String remote, String string) {
+        outgoingMessages.add(new Message(remote, string));
         selector.wakeup();
     }
 
-    public void broadcast(String s) {
-        outgoingMessages.add(new Message(s, null)); // null indicates broadcast message
+    public void broadcast(String string) {
+        outgoingMessages.add(new Message(null, string)); // null indicates broadcast message
     }
 
-    public Message getNextMessage() throws InterruptedException {
-        return incomingMessages.take();
+    public String getNextMessage() throws InterruptedException {
+        Message message = incomingMessages.take();
+        return message.getRemote() + " " + message.getString();
     }
 
     public void run() {
@@ -68,7 +71,7 @@ public class ConnectionManager implements Runnable {
     private void stageOutgoingMessages() {
         while (!outgoingMessages.isEmpty()) {
             Message message = outgoingMessages.remove();
-            Connection connection = message.getConnection();
+            Connection connection = connections.get(message.getRemote());
             if (connection == null) // handle broadcast message
                 for (SelectionKey key : selector.keys()) {
                     connection = (Connection) key.attachment();
@@ -88,6 +91,7 @@ public class ConnectionManager implements Runnable {
             connection.channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, connection);
         } catch (ClosedChannelException e) {
             logger.warning(String.format("CLOSED channel to %s", connection.remote));
+            connections.remove(connection.remote);
         }
     }
 
@@ -97,7 +101,7 @@ public class ConnectionManager implements Runnable {
 
         while (keyIterator.hasNext()) {
             SelectionKey key = keyIterator.next();
-            if (key.isValid() && key.isAcceptable())
+            if (key.isValid() && key.isAcceptable()) // TODO: Are these isValid() calls really needed?
                 processAccept(serverSocketChannel);
             if (key.isValid() && key.isConnectable())
                 logger.severe("CONNECT: why?\n");
@@ -125,6 +129,7 @@ public class ConnectionManager implements Runnable {
                 fConnectionClosed = true;
                 try {
                     connection.channel.close();
+                    connections.remove(connection.remote);
                 } catch (IOException e1) {
                     e1.printStackTrace();
                 }
@@ -145,14 +150,16 @@ public class ConnectionManager implements Runnable {
         buffer.clear();
         int charsRead = 0;
         boolean fConnectionClosed = false; // TODO: Another sort of hack (below)
+        Connection connection = (Connection) key.attachment();
+
         try {
             charsRead = socketChannel.read(buffer);
         } catch (IOException e) {
-            Connection connection = (Connection) key.attachment();
             logger.warning(String.format("READ ERROR '%s' from %s", e.getMessage(), connection.remote));
             fConnectionClosed = true;
             try {
-                socketChannel.close(); // TODO: Cleanup
+                socketChannel.close();
+                connections.remove(connection.remote);
             } catch (IOException e1) {
                 e1.printStackTrace();
             }
@@ -160,10 +167,10 @@ public class ConnectionManager implements Runnable {
         buffer.flip();
 
         if (charsRead == -1) {
-//            System.out.printf("EOF: closing channel\n");
             if (!fConnectionClosed) {
                 try {
                     socketChannel.shutdownInput();  // TODO: Not clear whether this is needed or should be just close()
+                    connections.remove(connection.remote);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -177,7 +184,7 @@ public class ConnectionManager implements Runnable {
                 if (c == '\r') // ignore carriage returns
                     ;
                 else if (c == '\n') {
-                    incomingMessages.add(new Message(sb.toString(), cd));
+                    incomingMessages.add(new Message(cd.remote, sb.toString()));
                     logger.info(String.format("READ: '%s' from %s", sb.toString(), socketChannel));
                     sb.setLength(0);
                 } else
@@ -190,7 +197,9 @@ public class ConnectionManager implements Runnable {
         try {
             SocketChannel socketChannel = serverSocketChannel.accept();
             socketChannel.configureBlocking(false);
-            socketChannel.register(selector, SelectionKey.OP_READ, new Connection(socketChannel));
+            Connection connection = new Connection(socketChannel);
+            connections.put(connection.remote, connection);
+            socketChannel.register(selector, SelectionKey.OP_READ, connection);
             logger.info(String.format("ACCEPT: %s (socket size = %d)", socketChannel.toString(), socketChannel.socket().getSendBufferSize()));
         } catch (IOException e) {
             e.printStackTrace();
