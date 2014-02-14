@@ -68,6 +68,24 @@ public class ConnectionManager implements Runnable {
         }
     }
 
+    private void processSelectorEvents(ServerSocketChannel serverSocketChannel) {
+        Set<SelectionKey> selectedKeys = selector.selectedKeys();
+        Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
+
+        while (keyIterator.hasNext()) {
+            SelectionKey key = keyIterator.next();
+            keyIterator.remove();
+            if (key.isAcceptable())
+                processAccept(serverSocketChannel);
+            if (key.isConnectable())
+                logger.severe("CONNECT: why?\n");
+            if (key.isReadable())
+                processRead(key);
+            if (key.isWritable())
+                processWrite(key);
+        }
+    }
+
     private void stageOutgoingMessages() {
         while (!outgoingMessages.isEmpty()) {
             Message message = outgoingMessages.remove();
@@ -95,21 +113,16 @@ public class ConnectionManager implements Runnable {
         }
     }
 
-    private void processSelectorEvents(ServerSocketChannel serverSocketChannel) {
-        Set<SelectionKey> selectedKeys = selector.selectedKeys();
-        Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
-
-        while (keyIterator.hasNext()) {
-            SelectionKey key = keyIterator.next();
-            keyIterator.remove();
-            if (key.isAcceptable())
-                processAccept(serverSocketChannel);
-            if (key.isConnectable())
-                logger.severe("CONNECT: why?\n");
-            if (key.isReadable())
-                processRead(key);
-            if (key.isWritable())
-                processWrite(key);
+    private void processAccept(ServerSocketChannel serverSocketChannel) {
+        try {
+            SocketChannel socketChannel = serverSocketChannel.accept();
+            socketChannel.configureBlocking(false);
+            Connection connection = new Connection(socketChannel);
+            connections.put(connection.remote, connection);
+            socketChannel.register(selector, SelectionKey.OP_READ, connection);
+            logger.info(String.format("ACCEPT: %s (socket size = %d)", socketChannel.toString(), socketChannel.socket().getSendBufferSize()));
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -190,19 +203,6 @@ public class ConnectionManager implements Runnable {
                 } else
                     sb.append(c);
             }
-        }
-    }
-
-    private void processAccept(ServerSocketChannel serverSocketChannel) {
-        try {
-            SocketChannel socketChannel = serverSocketChannel.accept();
-            socketChannel.configureBlocking(false);
-            Connection connection = new Connection(socketChannel);
-            connections.put(connection.remote, connection);
-            socketChannel.register(selector, SelectionKey.OP_READ, connection);
-            logger.info(String.format("ACCEPT: %s (socket size = %d)", socketChannel.toString(), socketChannel.socket().getSendBufferSize()));
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 }
