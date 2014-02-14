@@ -101,15 +101,15 @@ public class ConnectionManager implements Runnable {
 
         while (keyIterator.hasNext()) {
             SelectionKey key = keyIterator.next();
-            if (key.isValid() && key.isAcceptable()) // TODO: Are these isValid() calls really needed?
-                processAccept(serverSocketChannel);
-            if (key.isValid() && key.isConnectable())
-                logger.severe("CONNECT: why?\n");
-            if (key.isValid() && key.isReadable())
-                processRead(key);
-            if (key.isValid() && key.isWritable())
-                processWrite(key);
             keyIterator.remove();
+            if (key.isAcceptable())
+                processAccept(serverSocketChannel);
+            if (key.isConnectable())
+                logger.severe("CONNECT: why?\n");
+            if (key.isReadable())
+                processRead(key);
+            if (key.isWritable())
+                processWrite(key);
         }
     }
 
