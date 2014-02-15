@@ -1,4 +1,5 @@
 import edu.purdue.cs.rendezvous.ConnectionManager;
+import edu.purdue.cs.rendezvous.Message;
 
 import java.text.DateFormat;
 import java.util.HashMap;
@@ -7,9 +8,9 @@ import java.util.logging.*;
 /**
  * Created by jtk on 2/10/14.
  */
-public class TestServer {
+public class CMTestServer {
     public static void main(String args[]) {
-        new TestServer().run();
+        new CMTestServer().run();
     }
 
     ConnectionManager connectionManager;
@@ -19,7 +20,7 @@ public class TestServer {
          * Set up logging...
          */
         LogManager.getLogManager().reset();
-        Logger logger = Logger.getLogger(TestServer.class.getName());
+        Logger logger = Logger.getLogger(CMTestServer.class.getName());
         Logger loggerParent = logger.getParent();  // get root or global logger (why is not clear to me)
         loggerParent.setLevel(Level.INFO);
         Handler handler = new ConsoleHandler();
@@ -89,35 +90,39 @@ public class TestServer {
          */
         while (true) {
             try {
-                String message = connectionManager.getNextMessage();
+                Message message = connectionManager.getNextRawMessage();
+
+                logger.info(message.toString());
 
                 // message format indicating nth of m messages with c additional non-blank characters...
                 // message n m c xxx...
 
-                String[] fields = message.split(" ");
-                String remote = fields[0];
-                String command = fields[1];
-                int n = Integer.parseInt(fields[2]);
-                int m = Integer.parseInt(fields[3]);
-                int c = Integer.parseInt(fields[4]);
-                String text = fields[5];
+                if (message.getString() != null) {
+                    String remote = message.getRemote();
+                    String[] fields = message.getString().split(" ");
+                    String command = fields[0];
+                    int n = Integer.parseInt(fields[1]);
+                    int m = Integer.parseInt(fields[2]);
+                    int c = Integer.parseInt(fields[3]);
+                    String text = fields[4];
 
-                ConnectionData cd = null;
-                if (info.containsKey(remote))
-                    cd = info.get(remote);
-                else {
-                    cd = new ConnectionData(1, m);
-                    info.put(remote, cd);
+                    ConnectionData cd = null;
+                    if (info.containsKey(remote))
+                        cd = info.get(remote);
+                    else {
+                        cd = new ConnectionData(1, m);
+                        info.put(remote, cd);
+                    }
+
+                    assert command.equals("message");
+                    assert cd.next == n;
+                    assert cd.last == m;
+                    assert c == text.length();
+
+                    cd.next++;
+
+                    connectionManager.send(remote, String.format("received %d %s", c, text));
                 }
-
-                assert command.equals("message");
-                assert cd.next == n;
-                assert cd.last == m;
-                assert c == text.length();
-
-                cd.next++;
-
-                connectionManager.send(remote, String.format("received %d %s", c, text));
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }

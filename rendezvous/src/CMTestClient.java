@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Created by jtk on 2/8/14.
  */
-public class TestClient implements Runnable {
+public class CMTestClient implements Runnable {
     private final static int numClients = 100;
     private final static int numPackets = 1000;
 
@@ -25,7 +25,7 @@ public class TestClient implements Runnable {
         Thread[] clients = new Thread[numClients];
 
         for (int i = 0; i < numClients; i++) {
-            clients[i] = new Thread(new TestClient(i+1, numPackets));
+            clients[i] = new Thread(new CMTestClient(i+1, numPackets));
             clients[i].start();
         }
 
@@ -40,7 +40,7 @@ public class TestClient implements Runnable {
                 numClients * numPackets, totalCount.get());
     }
 
-    public TestClient(int id, int nPackets) {
+    public CMTestClient(int id, int nPackets) {
         this.id = id;
         this.nPackets = nPackets;
     }
