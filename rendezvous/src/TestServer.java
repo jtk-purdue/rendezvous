@@ -1,5 +1,4 @@
 import edu.purdue.cs.rendezvous.ConnectionManager;
-import edu.purdue.cs.rendezvous.Connection;
 
 import java.text.DateFormat;
 import java.util.HashMap;
@@ -8,9 +7,9 @@ import java.util.logging.*;
 /**
  * Created by jtk on 2/10/14.
  */
-public class Main {
+public class TestServer {
     public static void main(String args[]) {
-        new Main().run();
+        new TestServer().run();
     }
 
     ConnectionManager connectionManager;
@@ -20,7 +19,7 @@ public class Main {
          * Set up logging...
          */
         LogManager.getLogManager().reset();
-        Logger logger = Logger.getLogger(Main.class.getName());
+        Logger logger = Logger.getLogger(TestServer.class.getName());
         Logger loggerParent = logger.getParent();  // get root or global logger (why is not clear to me)
         loggerParent.setLevel(Level.INFO);
         Handler handler = new ConsoleHandler();
