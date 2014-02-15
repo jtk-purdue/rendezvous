@@ -25,7 +25,7 @@ public class ConnectionManager implements Runnable {
 
     public ConnectionManager(int port) {
         logger = Logger.getLogger(ConnectionManager.class.getName());
-        logger.info("Logger created in edu.purdue.cs.rendezvous.ConnectionManager");
+        logger.info("Logger created");
         this.port = port;
         new Thread(this).start();
     }
@@ -37,11 +37,16 @@ public class ConnectionManager implements Runnable {
 
     public void broadcast(String string) {
         outgoingMessages.add(new Message(null, string)); // null indicates broadcast message
+        selector.wakeup();
     }
 
     public String getNextMessage() throws InterruptedException {
         Message message = incomingMessages.take();
         return message.getRemote() + " " + message.getString();
+    }
+
+    public Message getNextRawMessage() throws InterruptedException {
+        return incomingMessages.take();
     }
 
     public void run() {
@@ -59,6 +64,7 @@ public class ConnectionManager implements Runnable {
 
             while (true) {
                 selector.select();
+                logger.info("selector wakeup");
                 processSelectorEvents(serverSocketChannel);
                 stageOutgoingMessages();
             }
@@ -81,23 +87,26 @@ public class ConnectionManager implements Runnable {
                 logger.severe("CONNECT: why?\n");
             if (key.isReadable())
                 processRead(key);
-            if (key.isWritable())
+            if (key.isValid() && key.isWritable())
                 processWrite(key);
         }
     }
 
     private void stageOutgoingMessages() {
+        logger.info("staging outgoing messages");
         while (!outgoingMessages.isEmpty()) {
             Message message = outgoingMessages.remove();
-            Connection connection = connections.get(message.getRemote());
-            if (connection == null) // handle broadcast message
+            String remote = message.getRemote();
+            if (remote == null) // handle broadcast message
                 for (SelectionKey key : selector.keys()) {
-                    connection = (Connection) key.attachment();
+                    Connection connection = (Connection) key.attachment();
                     if (connection != null)  // ensure connection is a client socket, not server socket
                         stageOneOutgoingMessage(message, connection);
                 }
-            else
+            else {
+                Connection connection = connections.get(remote);
                 stageOneOutgoingMessage(message, connection);
+            }
         }
     }
 
@@ -110,6 +119,9 @@ public class ConnectionManager implements Runnable {
         } catch (ClosedChannelException e) {
             logger.warning(String.format("CLOSED channel to %s", connection.remote));
             connections.remove(connection.remote);
+            incomingMessages.add(new Message(connection.remote, null));
+        } catch (CancelledKeyException e) {
+            logger.info(String.format("CANCELLED KEY exception caught: %s", e.toString()));
         }
     }
 
@@ -122,87 +134,107 @@ public class ConnectionManager implements Runnable {
             socketChannel.register(selector, SelectionKey.OP_READ, connection);
             logger.info(String.format("ACCEPT: %s (socket size = %d)", socketChannel.toString(), socketChannel.socket().getSendBufferSize()));
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.severe(String.format("ACCEPT FAILURE: %s", e.toString()));
         }
     }
 
     private void processWrite(SelectionKey key) {
+        logger.info("process write");
+        // Copy data from string buffer to connection buffer...
         Connection connection = (Connection) key.attachment();
         while (connection.outgoingBuffer.position() < connection.outgoingBuffer.limit() && connection.outgoingString.length() > 0) {
             connection.outgoingBuffer.put((byte) connection.outgoingString.charAt(0));
             connection.outgoingString.deleteCharAt(0);
         }
+
+        // Flip buffer from writing to reading...
         connection.outgoingBuffer.flip();
-        boolean fConnectionClosed = false; // TODO: Hack to avoid registering on a closed channel (below)
+
+        // Write data from connection buffer to network channel...
         if (connection.outgoingBuffer.hasRemaining()) {
             try {
                 connection.channel.write(connection.outgoingBuffer);
+                connection.outgoingBuffer.compact();
             } catch (IOException e) {
                 logger.warning(String.format("WRITE ERROR '%s' to %s", e.getMessage(), connection.remote));
-                fConnectionClosed = true;
+                key.cancel();
+                connections.remove(connection.remote);
+                incomingMessages.add(new Message(connection.remote, null));
                 try {
                     connection.channel.close();
-                    connections.remove(connection.remote);
                 } catch (IOException e1) {
-                    e1.printStackTrace();
+                    logger.severe(String.format("CLOSE ERROR '%s' of %s", e.getMessage(), connection.remote));
                 }
+                return;
             }
         }
-        connection.outgoingBuffer.compact();
-        if (!fConnectionClosed && !connection.outgoingBuffer.hasRemaining())
+
+        // If there is no more to be written, turn off write selection...
+        if (connection.outgoingString.length() == 0 && !connection.outgoingBuffer.hasRemaining())
+            logger.info(String.format("NO MORE TO WRITE to %s", connection.remote));
             try {
                 connection.channel.register(selector, SelectionKey.OP_READ, connection);
             } catch (ClosedChannelException e) {
-                e.printStackTrace();
+                logger.warning(String.format("CLOSE ERROR '%s' to %s", e.getMessage(), connection.remote));
+                key.cancel();
+                connections.remove(connection.remote);
+                incomingMessages.add(new Message(connection.remote, null));
             }
     }
 
     private void processRead(SelectionKey key) {
+        logger.info("process read");
         final ByteBuffer buffer = ByteBuffer.wrap(new byte[500]);
         SocketChannel socketChannel = (SocketChannel) key.channel();
         buffer.clear();
         int charsRead = 0;
-        boolean fConnectionClosed = false; // TODO: Another sort of hack (below)
         Connection connection = (Connection) key.attachment();
 
+        // Read data from network channel into buffer...
         try {
             charsRead = socketChannel.read(buffer);
         } catch (IOException e) {
             logger.warning(String.format("READ ERROR '%s' from %s", e.getMessage(), connection.remote));
-            fConnectionClosed = true;
+            key.cancel();
+            connections.remove(connection.remote);
+            incomingMessages.add(new Message(connection.remote, null));
             try {
                 socketChannel.close();
-                connections.remove(connection.remote);
             } catch (IOException e1) {
-                e1.printStackTrace();
+                logger.severe(String.format("CLOSE ERROR '%s' of %s", e.getMessage(), connection.remote));
             }
+            return;
         }
+
+        // Check for end of file...
+        if (charsRead == -1) {
+            try {
+                logger.info(String.format("end of file on %s", connection.remote));
+                socketChannel.shutdownInput();
+                key.cancel();
+                connections.remove(connection.remote);
+                incomingMessages.add(new Message(connection.remote, null));
+            } catch (IOException e) {
+                logger.severe(String.format("CLOSE ERROR '%s' of %s", e.getMessage(), connection.remote));
+            }
+            return;
+        }
+
+        // Flip buffer from writing to reading...
         buffer.flip();
 
-        if (charsRead == -1) {
-            if (!fConnectionClosed) {
-                try {
-                    socketChannel.shutdownInput();  // TODO: Not clear whether this is needed or should be just close()
-                    connections.remove(connection.remote);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        } else {
-            Connection cd = (Connection) key.attachment();
-            StringBuffer sb = cd.incomingString;
-
-            while (buffer.hasRemaining()) {
-                char c = (char) buffer.get(); // TODO: This is wrong, since get returns a byte.
-                if (c == '\r') // ignore carriage returns
-                    ;
-                else if (c == '\n') {
-                    incomingMessages.add(new Message(cd.remote, sb.toString()));
-                    logger.info(String.format("READ: '%s' from %s", sb.toString(), socketChannel));
-                    sb.setLength(0);
-                } else
-                    sb.append(c);
-            }
+        // Copy data from buffer to incoming message...
+        StringBuffer sb = connection.incomingString;
+        while (buffer.hasRemaining()) {
+            char c = (char) buffer.get(); // TODO: This is wrong, since get returns a byte.
+            if (c == '\r') // ignore carriage returns
+                ;
+            else if (c == '\n') {
+                incomingMessages.add(new Message(connection.remote, sb.toString()));
+                logger.info(String.format("READ: '%s' from %s", sb.toString(), socketChannel));
+                sb.setLength(0);
+            } else
+                sb.append(c);
         }
     }
 }
