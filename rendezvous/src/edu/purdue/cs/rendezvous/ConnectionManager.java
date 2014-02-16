@@ -74,13 +74,17 @@ public class ConnectionManager implements Runnable {
         }
     }
 
+    static int counter = 0;
+
     private void processSelectorEvents(ServerSocketChannel serverSocketChannel) {
         Set<SelectionKey> selectedKeys = selector.selectedKeys();
         Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
         while (keyIterator.hasNext()) {
             SelectionKey key = keyIterator.next();
+            logger.info(String.format("@1 %d key (%s) status: interestOps = %o, readyOps = %o", counter++, key.toString(), key.interestOps(), key.readyOps()));
             keyIterator.remove();
+            logger.info(String.format("@2 %d key (%s) status: interestOps = %o, readyOps = %o", counter++, key.toString(), key.interestOps(), key.readyOps()));
             if (key.isAcceptable())
                 processAccept(serverSocketChannel);
             if (key.isConnectable())
@@ -89,6 +93,11 @@ public class ConnectionManager implements Runnable {
                 processRead(key);
             if (key.isValid() && key.isWritable())
                 processWrite(key);
+            if (key.isValid())
+                logger.info(String.format("@3a %d key (%s) status: interestOps = %o, readyOps = %o", counter++, key.toString(), key.interestOps(), key.readyOps()));
+            else
+                logger.info(String.format("@3b %d key (%s) status: no longer valid", counter++, key.toString()));
+
         }
     }
 
@@ -139,9 +148,9 @@ public class ConnectionManager implements Runnable {
     }
 
     private void processWrite(SelectionKey key) {
-        logger.info("process write");
         // Copy data from string buffer to connection buffer...
         Connection connection = (Connection) key.attachment();
+        logger.info(String.format("@4 %d key (%s) status: interestOps = %o, readyOps = %o", counter++, key.toString(), key.interestOps(), key.readyOps()));
         while (connection.outgoingBuffer.position() < connection.outgoingBuffer.limit() && connection.outgoingString.length() > 0) {
             connection.outgoingBuffer.put((byte) connection.outgoingString.charAt(0));
             connection.outgoingString.deleteCharAt(0);
@@ -170,8 +179,10 @@ public class ConnectionManager implements Runnable {
         }
 
         // If there is no more to be written, turn off write selection...
-        if (connection.outgoingString.length() == 0 && !connection.outgoingBuffer.hasRemaining())
-            logger.info(String.format("NO MORE TO WRITE to %s", connection.remote));
+        logger.info(String.format("@5 %d key (%s) status: interestOps = %o, readyOps = %o", counter++, key.toString(), key.interestOps(), key.readyOps()));
+        if (connection.outgoingString.length() == 0 && !connection.outgoingBuffer.hasRemaining()) {
+            logger.info(String.format("@7 %d key (%s) status: interestOps = %o, readyOps = %o", counter++, key.toString(), key.interestOps(), key.readyOps()));
+            logger.info(String.format("NO MORE TO WRITE to %s: string length = %d, hasRemaining = %b", connection.remote, connection.outgoingString.length(), connection.outgoingBuffer.hasRemaining()));
             try {
                 connection.channel.register(selector, SelectionKey.OP_READ, connection);
             } catch (ClosedChannelException e) {
@@ -180,6 +191,8 @@ public class ConnectionManager implements Runnable {
                 connections.remove(connection.remote);
                 incomingMessages.add(new Message(connection.remote, null));
             }
+            logger.info(String.format("@6 %d key (%s) status: interestOps = %o, readyOps = %o", counter++, key.toString(), key.interestOps(), key.readyOps()));
+        }
     }
 
     private void processRead(SelectionKey key) {
