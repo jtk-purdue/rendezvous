@@ -127,6 +127,7 @@ public class ConnectionManager implements Runnable {
             connection.channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, connection);
         } catch (ClosedChannelException e) {
             logger.warning(String.format("CLOSED channel to %s", connection.remote));
+            connection.channel.keyFor(selector).cancel();
             connections.remove(connection.remote);
             incomingMessages.add(new Message(connection.remote, null));
         } catch (CancelledKeyException e) {
