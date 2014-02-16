@@ -79,7 +79,7 @@ public class RendezvousServer {
 
                 while (true) {
                     try {
-                        Thread.sleep(60000);
+                        Thread.sleep(10000);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
