@@ -13,13 +13,14 @@ import java.util.logging.Logger;
  * Created by jtk on 2/9/14.
  */
 public class Connection {
+    private final static int BUFFER_SIZE = 500;
     private SocketChannel socketChannel;
     private Selector selector;
     private Logger logger;
     private SelectionKey key;
     private StringBuffer incomingString = new StringBuffer();
     private StringBuffer outgoingString = new StringBuffer();
-    private ByteBuffer outgoingBuffer = ByteBuffer.wrap(new byte[500]);
+    private ByteBuffer outgoingBuffer = ByteBuffer.wrap(new byte[BUFFER_SIZE]);
     private String remote;
 
     Connection(SocketChannel socketChannel, Selector selector) {
@@ -62,7 +63,7 @@ public class Connection {
     }
 
     public void readMessages(LinkedBlockingQueue<Message> incomingMessages) throws IOException {
-        final ByteBuffer buffer = ByteBuffer.wrap(new byte[500]);
+        final ByteBuffer buffer = ByteBuffer.wrap(new byte[BUFFER_SIZE]);
         logger.info(String.format("readMessage: position = %d, limit = %d, hasRemaining = %b", buffer.position(), buffer.limit(), buffer.hasRemaining()));
         int charsRead = 0;
 
@@ -96,33 +97,26 @@ public class Connection {
         if (outgoingBuffer.limit() == 0)
             throw new RuntimeException("limit is 0");
         logger.info(String.format("writeMessage: position = %d, limit = %d, hasRemaining = %b", outgoingBuffer.position(), outgoingBuffer.limit(), outgoingBuffer.hasRemaining()));
-//        outgoingBuffer.clear();
-//        logger.info(String.format("POSTCLEAR: position = %d and limit = %d", outgoingBuffer.position(), outgoingBuffer.limit()));
         while (outgoingBuffer.position() < outgoingBuffer.limit() && outgoingString.length() > 0) {
             outgoingBuffer.put((byte) outgoingString.charAt(0));
             outgoingString.deleteCharAt(0);
         }
 
         // Flip buffer from writing to reading...
-        logger.info(String.format("PREFLIP: position = %d and limit = %d", outgoingBuffer.position(), outgoingBuffer.limit()));
         outgoingBuffer.flip();
-        logger.info(String.format("POSTFLIP: position = %d and limit = %d", outgoingBuffer.position(), outgoingBuffer.limit()));
 
         // Write data from connection buffer to network channel...
-        if (outgoingBuffer.hasRemaining()) {
-            logger.info(String.format("WRITE: '%s'", outgoingBuffer.toString()));
+        if (outgoingBuffer.hasRemaining())
             socketChannel.write(outgoingBuffer);
+
+        // Prepare the buffer for next time: either compact if data left, else clear it
+        if (outgoingBuffer.hasRemaining())
             outgoingBuffer.compact();
-            logger.info(String.format("POSTCOMPACT: position = %d and limit = %d", outgoingBuffer.position(), outgoingBuffer.limit()));
-        }
+        else
+            outgoingBuffer.clear();
 
         // If there is no more to be written, turn off write selection...
-        if (outgoingString.length() == 0 && !outgoingBuffer.hasRemaining()) {
-            outgoingBuffer.clear();
-            logger.info("NO MORE DATA to write on this channel; selecting for read only");
+        if (outgoingBuffer.position() == 0 && outgoingString.length() == 0)
             socketChannel.register(selector, SelectionKey.OP_READ, this);
-        } else {
-            logger.info(String.format("MORE DATA: %d in outgoingString and hasRemaining is %b", outgoingString.length(), outgoingBuffer.hasRemaining()));
-        }
     }
 }
