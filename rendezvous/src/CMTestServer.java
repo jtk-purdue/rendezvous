@@ -92,7 +92,7 @@ public class CMTestServer {
             try {
                 Message message = connectionManager.getNextRawMessage();
 
-                logger.info(message.toString());
+                logger.info("CMTestServer received: " + message.toString());
 
                 // message format indicating nth of m messages with c additional non-blank characters...
                 // message n m c xxx...

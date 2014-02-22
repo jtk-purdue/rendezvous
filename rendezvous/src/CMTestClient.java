@@ -36,7 +36,10 @@ public class CMTestClient implements Runnable {
                 e.printStackTrace();
             }
 
-        System.out.printf("Test complete: %d packets expected, %d packets received\n",
+        if (numClients * numPackets == totalCount.get())
+            System.out.printf("Test successful: received all %d packets\n", totalCount.get());
+        else
+            System.out.printf("Test FAILED: %d packets expected != %d packets received\n",
                 numClients * numPackets, totalCount.get());
     }
 
@@ -46,7 +49,7 @@ public class CMTestClient implements Runnable {
     }
 
     public void run() {
-//        System.out.printf("client %d starting: generating %d packets\n", id, nPackets);
+        System.out.printf("client %d starting: generating %d packets\n", id, nPackets);
 
         try {
             Socket socket = new Socket(serverLocation, portLocation);
@@ -62,12 +65,12 @@ public class CMTestClient implements Runnable {
                 outputStreamWriter.flush();
             }
 
+            System.out.printf("client %d sent %d packets\n", id, nPackets);
+
             watcher.join();
             socket.close();
         } catch (IOException e) {
             System.err.printf("CLIENT %d FAILED TO START\n", id, nPackets);
-//            e.printStackTrace();
-//            System.exit(id);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -97,7 +100,7 @@ public class CMTestClient implements Runnable {
             while (!socket.isOutputShutdown()) {
                 try {
                     String line = bufferedReader.readLine();
-    //                System.out.printf("RECEIVED: %s\n", line);
+                    System.out.printf("RECEIVED: %s\n", line);
                     if (line.startsWith("received")) {
                         totalCount.incrementAndGet();
                         String[] fields = line.split(" ");

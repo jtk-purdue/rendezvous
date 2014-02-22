@@ -20,4 +20,6 @@ public class Message {
     public String getString() {
         return string;
     }
+
+    public String toString() { return String.format("%s from %s", string, remote); }
 }

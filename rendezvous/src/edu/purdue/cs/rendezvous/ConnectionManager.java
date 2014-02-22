@@ -24,7 +24,7 @@ public class ConnectionManager implements Runnable {
     private HashMap<String, Connection> connections = new HashMap<String, Connection>();
 
     public ConnectionManager(int port) {
-        logger = Logger.getLogger(ConnectionManager.class.getName());
+        logger = Logger.getLogger(this.getClass().getSimpleName());
         logger.info("Logger created");
         this.port = port;
         new Thread(this).start();
@@ -74,8 +74,6 @@ public class ConnectionManager implements Runnable {
         }
     }
 
-    static int counter = 0;
-
     private void processSelectorEvents(ServerSocketChannel serverSocketChannel) {
         Set<SelectionKey> selectedKeys = selector.selectedKeys();
         Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
@@ -83,15 +81,54 @@ public class ConnectionManager implements Runnable {
         while (keyIterator.hasNext()) {
             SelectionKey key = keyIterator.next();
             logger.info(String.format("key event: %s", key.toString()));
-            keyIterator.remove();
             if (key.isAcceptable())
                 processAccept(serverSocketChannel);
-            if (key.isConnectable())
+            if (key.isConnectable()) {
                 logger.severe("CONNECT: why?\n");
+                throw new RuntimeException("Unexpected key.isConnectable()");
+            }
             if (key.isReadable())
                 processRead(key);
             if (key.isValid() && key.isWritable())
                 processWrite(key);
+            keyIterator.remove();
+        }
+    }
+
+    private void processAccept(ServerSocketChannel serverSocketChannel) {
+        try {
+            SocketChannel socketChannel = serverSocketChannel.accept();
+            socketChannel.configureBlocking(false);
+            Connection connection = new Connection(socketChannel, selector);
+            connections.put(connection.getRemote(), connection);
+            logger.info(String.format("ACCEPT: %s (socket size = %d)", socketChannel.toString(), socketChannel.socket().getSendBufferSize()));
+        } catch (IOException e) {
+            logger.severe(String.format("ACCEPT FAILURE: %s", e.toString()));
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void processWrite(SelectionKey key) {
+        logger.info("process write");
+        Connection connection = (Connection) key.attachment();
+        try {
+            connection.writeMessage();
+        } catch (IOException e) {
+            incomingMessages.add(new Message(connection.getRemote(), null));
+            connections.remove(connection.getRemote());
+            connection.close();
+        }
+    }
+
+    private void processRead(SelectionKey key) {
+        logger.info("process read");
+        Connection connection = (Connection) key.attachment();
+        try {
+            connection.readMessages(incomingMessages);
+        } catch (IOException e) {
+            incomingMessages.add(new Message(connection.getRemote(), null));
+            connections.remove(connection.getRemote());
+            connection.close();
         }
     }
 
@@ -103,142 +140,24 @@ public class ConnectionManager implements Runnable {
             if (remote == null) // handle broadcast message
                 for (SelectionKey key : selector.keys()) {
                     Connection connection = (Connection) key.attachment();
-                    if (connection != null)  // ensure connection is a client socket, not server socket
+                    if (connection != null && connection.isOpen())  // ensure connection is a client socket, not server socket, and is open
                         stageOneOutgoingMessage(message, connection);
                 }
             else {
                 Connection connection = connections.get(remote);
-                stageOneOutgoingMessage(message, connection);
+                if (connection != null && connection.isOpen())
+                    stageOneOutgoingMessage(message, connection);
             }
         }
     }
 
     private void stageOneOutgoingMessage(Message message, Connection connection) {
-        connection.outgoingString.append(message.getString());
-        connection.outgoingString.append("\n");
-        logger.info(String.format("SENDING: '%s'", message.getString()));
         try {
-            connection.channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, connection);
-        } catch (ClosedChannelException e) {
-            logger.severe(String.format("CLOSED channel to %s", connection.remote));
-            connection.channel.keyFor(selector).cancel();
-            connections.remove(connection.remote);
-//            incomingMessages.add(new Message(connection.remote, null));
-        } catch (CancelledKeyException e) {
-            logger.severe(String.format("CANCELLED KEY exception caught: %s", e.toString()));
-        }
-    }
-
-    private void processAccept(ServerSocketChannel serverSocketChannel) {
-        try {
-            SocketChannel socketChannel = serverSocketChannel.accept();
-            socketChannel.configureBlocking(false);
-            Connection connection = new Connection(socketChannel);
-            connections.put(connection.remote, connection);
-            socketChannel.register(selector, SelectionKey.OP_READ, connection);
-            logger.info(String.format("ACCEPT: %s (socket size = %d)", socketChannel.toString(), socketChannel.socket().getSendBufferSize()));
+            connection.appendLine(message.getString());
         } catch (IOException e) {
-            logger.severe(String.format("ACCEPT FAILURE: %s", e.toString()));
-        }
-    }
-
-    private void processWrite(SelectionKey key) {
-        // Copy data from string buffer to connection buffer...
-        Connection connection = (Connection) key.attachment();
-        while (connection.outgoingBuffer.position() < connection.outgoingBuffer.limit() && connection.outgoingString.length() > 0) {
-            connection.outgoingBuffer.put((byte) connection.outgoingString.charAt(0));
-            connection.outgoingString.deleteCharAt(0);
-        }
-
-        // Flip buffer from writing to reading...
-        connection.outgoingBuffer.flip();
-
-        // Write data from connection buffer to network channel...
-        if (connection.outgoingBuffer.hasRemaining()) {
-            try {
-                connection.channel.write(connection.outgoingBuffer);
-                connection.outgoingBuffer.compact();
-            } catch (IOException e) {
-                logger.warning(String.format("WRITE ERROR '%s' to %s", e.getMessage(), connection.remote));
-                key.cancel();
-                connections.remove(connection.remote);
-//                incomingMessages.add(new Message(connection.remote, null));
-                try {
-                    connection.channel.close();
-                } catch (IOException e1) {
-                    logger.severe(String.format("CLOSE ERROR '%s' of %s", e.getMessage(), connection.remote));
-                }
-                return;
-            }
-        }
-
-        // If there is no more to be written, turn off write selection...
-        if (connection.outgoingString.length() == 0 && !connection.outgoingBuffer.hasRemaining()) {
-            logger.info(String.format("NO MORE TO WRITE to %s: string length = %d, hasRemaining = %b", connection.remote, connection.outgoingString.length(), connection.outgoingBuffer.hasRemaining()));
-            try {
-                connection.channel.register(selector, SelectionKey.OP_READ, connection);
-            } catch (ClosedChannelException e) {
-                logger.warning(String.format("CLOSE ERROR '%s' to %s", e.getMessage(), connection.remote));
-                key.cancel();
-                connections.remove(connection.remote);
-//                incomingMessages.add(new Message(connection.remote, null));
-            }
-        }
-    }
-
-    private void processRead(SelectionKey key) {
-        logger.info("process read");
-        final ByteBuffer buffer = ByteBuffer.wrap(new byte[500]);
-        SocketChannel socketChannel = (SocketChannel) key.channel();
-        buffer.clear();
-        int charsRead = 0;
-        Connection connection = (Connection) key.attachment();
-
-        // Read data from network channel into buffer...
-        try {
-            charsRead = socketChannel.read(buffer);
-        } catch (IOException e) {
-            logger.warning(String.format("READ ERROR '%s' from %s", e.getMessage(), connection.remote));
-            key.cancel();
-            connections.remove(connection.remote);
-//            incomingMessages.add(new Message(connection.remote, null));
-            try {
-                socketChannel.close();
-            } catch (IOException e1) {
-                logger.severe(String.format("CLOSE ERROR '%s' of %s", e.getMessage(), connection.remote));
-            }
-            return;
-        }
-
-        // Check for end of file...
-        if (charsRead == -1) {
-            try {
-                logger.info(String.format("end of file on %s", connection.remote));
-                socketChannel.shutdownInput();
-                key.cancel();
-                connections.remove(connection.remote);
-//                incomingMessages.add(new Message(connection.remote, null));
-            } catch (IOException e) {
-                logger.severe(String.format("CLOSE ERROR '%s' of %s", e.getMessage(), connection.remote));
-            }
-            return;
-        }
-
-        // Flip buffer from writing to reading...
-        buffer.flip();
-
-        // Copy data from buffer to incoming message...
-        StringBuffer sb = connection.incomingString;
-        while (buffer.hasRemaining()) {
-            char c = (char) buffer.get(); // TODO: This is wrong, since get returns a byte.
-            if (c == '\r') // ignore carriage returns
-                ;
-            else if (c == '\n') {
-                incomingMessages.add(new Message(connection.remote, sb.toString()));
-                logger.info(String.format("READ: '%s' from %s", sb.toString(), socketChannel));
-                sb.setLength(0);
-            } else
-                sb.append(c);
+            incomingMessages.add(new Message(connection.getRemote(), null));
+            connections.remove(connection.getRemote());
+            connection.close();
         }
     }
 }
