@@ -109,11 +109,8 @@ public class Connection {
         if (outgoingBuffer.hasRemaining())
             socketChannel.write(outgoingBuffer);
 
-        // Prepare the buffer for next time: either compact if data left, else clear it
-        if (outgoingBuffer.hasRemaining())
-            outgoingBuffer.compact();
-        else
-            outgoingBuffer.clear();
+        // Prepare the buffer for next time...
+        outgoingBuffer.compact();
 
         // If there is no more to be written, turn off write selection...
         if (outgoingBuffer.position() == 0 && outgoingString.length() == 0)
