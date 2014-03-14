@@ -10,13 +10,18 @@ import java.util.logging.*;
  */
 public class RendezvousServer {
     public static void main(String[] args) {
-        new RendezvousServer().run();
+        if (args.length != 1)
+            System.err.printf("Usage: rendezvous PORT-NUMBER");
+        else {
+            int port = Integer.parseInt(args[0]);
+            new RendezvousServer().run(port);
+        }
     }
 
     ConnectionManager connectionManager;
     String server = null;
 
-    public void run() {
+    public void run(int port) {
         /**
          * Set up logging...
          */
@@ -65,7 +70,7 @@ public class RendezvousServer {
         /**
          * Create ConnectionManager...
          */
-        connectionManager = new ConnectionManager(1111);
+        connectionManager = new ConnectionManager(port);
 
         /**
          * Start broadcaster to generate broadcast traffic...
