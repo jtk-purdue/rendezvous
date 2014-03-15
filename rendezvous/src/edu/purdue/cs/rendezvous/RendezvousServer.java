@@ -10,10 +10,11 @@ import java.util.logging.*;
  */
 public class RendezvousServer {
     public static void main(String[] args) {
-        if (args.length != 1)
-            System.err.printf("Usage: Rendezvous PORT-NUMBER\n");
+        if (args.length != 2)
+            System.err.printf("Usage: Rendezvous PORT-NUMBER [console|file]\n");
         else {
             int port = Integer.parseInt(args[0]);
+            boolean console = args[1].equals("console");
             new RendezvousServer().run(port, true);
         }
     }
