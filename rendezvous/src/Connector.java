@@ -12,6 +12,7 @@ import java.util.Observer;
 public class Connector extends Observable implements Runnable, Observer {
     private String host;
     private int port;
+    private String connectString;
 
     private boolean closing = false;
     private Socket socket = null;
@@ -19,12 +20,13 @@ public class Connector extends Observable implements Runnable, Observer {
     private BufferedReader bufferedReader;
 
     public Connector(String host, int port) {
-        this(host, port, null);
+        this(host, port, null, null);
     }
 
-    public Connector(String host, int port, Observer observer) {
+    public Connector(String host, int port, String connectString, Observer observer) {
         this.host = host;
         this.port = port;
+        this.connectString = connectString;
 
         if (observer == null)
             addObserver(this);
@@ -35,12 +37,18 @@ public class Connector extends Observable implements Runnable, Observer {
     }
 
     private synchronized void open() {
-        if (socket != null)
+        if (socket != null || closing)
             return;
         try {
             socket = new Socket(host, port);
-            outputStreamWriter = new OutputStreamWriter(socket.getOutputStream());
             bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            outputStreamWriter = new OutputStreamWriter(socket.getOutputStream());
+
+            if (connectString != null) {
+                outputStreamWriter.write(connectString);
+                outputStreamWriter.write("\n");
+                outputStreamWriter.flush();
+            }
         } catch (IOException e) {
             socket = null;
         }
@@ -58,7 +66,7 @@ public class Connector extends Observable implements Runnable, Observer {
     }
 
     public void run() {
-        while (true) {
+        while (!closing) {
             open();
             try {
                 String line = bufferedReader.readLine();
@@ -66,22 +74,24 @@ public class Connector extends Observable implements Runnable, Observer {
                 notifyObservers(line);
             } catch (Exception e) {
                 socket = null;
-                System.err.printf("closing = %b\n", closing);
-                if (closing)
-                    return;
-                System.err.printf("READ FAILED: sleeping for 5 seconds\n");
-                sleep(5000);
+                if (!closing) {
+                    System.err.printf("READ FAILED: sleeping for 5 seconds (closing = %b)\n", closing);
+                    sleep(5000);
+                }
             }
         }
     }
 
-    void close() {
+    synchronized void close() {
         closing = true;
         try {
-            outputStreamWriter.close();
-            bufferedReader.close();
-            socket.close();
-        } catch (Exception e) {
+            if (outputStreamWriter != null)
+                outputStreamWriter.close();
+            if (bufferedReader != null)
+                bufferedReader.close();
+            if (socket != null)
+                socket.close();
+        } catch (IOException e) {
             // ignore
         }
     }

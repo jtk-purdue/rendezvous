@@ -107,18 +107,16 @@ public class RendezvousServer {
                     logger.info(String.format("Connection to %s closed", message.getRemote()));
                     if (message.getRemote().equals(server)) {
                         server = null;
-                        connectionManager.broadcast(message.getRemote() + " server gone");
-                    } else if (server == null)
-                        connectionManager.broadcast(String.format("%s closed", message.getRemote()));
-                    else
+                        connectionManager.broadcast(/* message.getRemote() + */ " server gone");
+                    } else if (server != null)
                         connectionManager.send(server, String.format("%s closed", message.getRemote()));
                 } else if (server == null) { // don't have a server yet, check for server, broadcast
                     if (message.getString().startsWith("server"))
                         server = message.getRemote();
-                    connectionManager.broadcast(message.getRemote() + " " + message.getString());
+                    connectionManager.broadcast(/* message.getRemote() + " " + */ message.getString());
                 } else {
                     if (message.getRemote().equals(server)) {
-                        connectionManager.broadcast(server + " " + message.getString());
+                        connectionManager.broadcast(/* server + " " + */ message.getString());
                     } else {
                         connectionManager.send(server, message.getRemote() + " " + message.getString());
                     }

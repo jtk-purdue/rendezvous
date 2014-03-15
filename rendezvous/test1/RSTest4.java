@@ -10,7 +10,7 @@ public class RSTest4 implements Observer {
     }
 
     private void run(String host, int port) {
-        Connector connector = new Connector(host, port, this);
+        Connector connector = new Connector(host, port, null, this);
         connector.writeLine("hello");
         connector.writeLine("here is a test");
         connector.writeLine("last line");
