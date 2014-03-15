@@ -15,7 +15,7 @@ public class RendezvousServer {
         else {
             int port = Integer.parseInt(args[0]);
             boolean console = args[1].equals("console");
-            new RendezvousServer().run(port, true);
+            new RendezvousServer().run(port, console);
         }
     }
 
