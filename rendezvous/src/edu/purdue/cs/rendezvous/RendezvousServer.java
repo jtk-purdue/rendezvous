@@ -36,7 +36,7 @@ public class RendezvousServer {
             handler = new ConsoleHandler();
         else {
             try {
-                handler = new FileHandler("trace.log", 1000, 10);
+                handler = new FileHandler("trace.log", 10000000, 20);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
