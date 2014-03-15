@@ -97,10 +97,9 @@ class TestClient implements Runnable {
 
             // Format: remote command parameters...
             String[] fields = message.split(" ");
-            String remote = fields[0];
-            String command = fields[1];
+            String command = fields[0];
 
-            if (command.equals("server") && fields[2].equals("gone"))
+            if (command.equals("server") && fields[1].equals("gone"))
                 break;
         }
 

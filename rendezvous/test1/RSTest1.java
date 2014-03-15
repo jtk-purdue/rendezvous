@@ -12,6 +12,7 @@ public class RSTest1 {
     private void testSingleConnection() {
         System.out.println("BEGIN: SINGLE CONNECTION TEST");
         ServerConnection c = new ServerConnection(serverLocation, portLocation);
+        c.writeLine("server");
         c.writeLine("hello");
         String response = c.readLine();
         System.out.println(response);

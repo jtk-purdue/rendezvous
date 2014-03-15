@@ -1,7 +1,7 @@
 package edu.purdue.cs.rendezvous;
 
+import java.io.IOException;
 import java.text.DateFormat;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.logging.*;
 
@@ -11,17 +11,17 @@ import java.util.logging.*;
 public class RendezvousServer {
     public static void main(String[] args) {
         if (args.length != 1)
-            System.err.printf("Usage: rendezvous PORT-NUMBER");
+            System.err.printf("Usage: Rendezvous PORT-NUMBER\n");
         else {
             int port = Integer.parseInt(args[0]);
-            new RendezvousServer().run(port);
+            new RendezvousServer().run(port, true);
         }
     }
 
     ConnectionManager connectionManager;
     String server = null;
 
-    public void run(int port) {
+    public void run(int port, boolean console) {
         /**
          * Set up logging...
          */
@@ -29,7 +29,18 @@ public class RendezvousServer {
         Logger logger = Logger.getLogger(RendezvousServer.class.getName());
         Logger loggerParent = logger.getParent();  // get root or global logger (why is not clear to me)
         loggerParent.setLevel(Level.INFO);
-        Handler handler = new ConsoleHandler();
+
+        Handler handler = null;
+        if (console)
+            handler = new ConsoleHandler();
+        else {
+            try {
+                handler = new FileHandler("trace.log", 1000, 10);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         Formatter formatter = new Formatter() {
             @Override
             public String format(LogRecord logRecord) {
@@ -73,28 +84,6 @@ public class RendezvousServer {
         connectionManager = new ConnectionManager(port);
 
         /**
-         * Start broadcaster to generate broadcast traffic...
-         *
-         * TODO: This block can be deleted when not interesting anymore.
-         */
-//        Runnable broadcaster = new Runnable() {
-//            @Override
-//            public void run() {
-//                int n = 0;
-//
-//                while (true) {
-//                    try {
-//                        Thread.sleep(10000);
-//                    } catch (InterruptedException e) {
-//                        e.printStackTrace();
-//                    }
-//                    connectionManager.broadcast(String.format("HEARTBEAT %d at %s", ++n, new Date().toString()));
-//                }
-//            }
-//        };
-//        new Thread(broadcaster).start();
-
-        /**
          * Process incoming traffic from clients; generate outgoing traffic...
          */
         while (true) {
@@ -107,16 +96,15 @@ public class RendezvousServer {
                     logger.info(String.format("Connection to %s closed", message.getRemote()));
                     if (message.getRemote().equals(server)) {
                         server = null;
-                        connectionManager.broadcast(/* message.getRemote() + */ " server gone");
+                        connectionManager.broadcast("server gone");
                     } else if (server != null)
-                        connectionManager.send(server, String.format("%s closed", message.getRemote()));
-                } else if (server == null) { // don't have a server yet, check for server, broadcast
-                    if (message.getString().startsWith("server"))
+                        connectionManager.send(server, String.format("server %s closed", message.getRemote()));
+                } else if (server == null) { // don't have a server yet, check for server
+                    if (message.getString().equals("server"))
                         server = message.getRemote();
-                    connectionManager.broadcast(/* message.getRemote() + " " + */ message.getString());
                 } else {
                     if (message.getRemote().equals(server)) {
-                        connectionManager.broadcast(/* server + " " + */ message.getString());
+                        connectionManager.broadcast(message.getString());
                     } else {
                         connectionManager.send(server, message.getRemote() + " " + message.getString());
                     }

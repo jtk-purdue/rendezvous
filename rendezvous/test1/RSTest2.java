@@ -15,6 +15,9 @@ public class RSTest2 {
         final int numConnections = 10;
         final int numMessages = 100;
 
+        ServerConnection server = new ServerConnection(serverLocation, portLocation);
+        server.writeLine("server");
+
         ServerConnection[] connections = new ServerConnection[numConnections];
 
         for (int i = 0; i < numConnections; i++)
@@ -30,7 +33,7 @@ public class RSTest2 {
             for (int j = 0; j < numMessages; j++) {
                 String message = String.format("message %d of %d from connection %d of %d", j + 1, numMessages, i + 1, numConnections);
                 System.out.println(message);
-                connections[i].writeLine(message);
+                server.writeLine(message);
             }
 
         for (int i = 0; i < numConnections; i++) {
@@ -42,8 +45,9 @@ public class RSTest2 {
                     System.err.printf("%d: null response on connection\n", i + 1);
                     break;
                 }
+                System.out.println(response);
                 String[] fields = response.split(" ");
-                if (fields.length > 0 && fields[1].equals("message")) {
+                if (fields[0].equals("message")) {
                     j++;
                     System.out.printf("%d: received %d of %d: %s\n", i + 1, j, numMessages * numConnections, response);
                 } else

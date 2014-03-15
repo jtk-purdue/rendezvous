@@ -11,7 +11,7 @@ public class Simulator extends Thread implements Observer {
 
     public Simulator(String name, String host, int port) {
         this.name = name;
-        this.connector = new Connector(host, port, "server safewalk", this);
+        this.connector = new Connector(host, port, "server", this);
     }
 
     public void run() {
@@ -35,7 +35,7 @@ public class Simulator extends Thread implements Observer {
         String line = (String) arg;
         System.out.printf("SIM: %s\n", line);
         String[] fields = line.split(" ");
-        if (fields[1].equals("server") && fields[2].equals("beat") && fields[3].equals("3"))
+        if (fields[0].equals("server") && fields[1].equals("beat") && fields[2].equals("3"))
             running = false;
     }
 }
