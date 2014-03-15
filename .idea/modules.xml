@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/niotest.iml" filepath="$PROJECT_DIR$/niotest.iml" />
       <module fileurl="file://$PROJECT_DIR$/rendezvous/rendezvous.iml" filepath="$PROJECT_DIR$/rendezvous/rendezvous.iml" />
     </modules>
   </component>

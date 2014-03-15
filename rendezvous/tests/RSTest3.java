@@ -8,7 +8,7 @@ public class RSTest3 {
     public final static int numClients = 10;
 
     final static String serverLocation = "localhost";
-    final static int portLocation = 1111;
+    final static int portLocation = 1337;
 
     public static AtomicInteger totalCount = new AtomicInteger(0);
 

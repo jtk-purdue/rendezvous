@@ -77,22 +77,22 @@ public class RendezvousServer {
          *
          * TODO: This block can be deleted when not interesting anymore.
          */
-        Runnable broadcaster = new Runnable() {
-            @Override
-            public void run() {
-                int n = 0;
-
-                while (true) {
-                    try {
-                        Thread.sleep(10000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                    connectionManager.broadcast(String.format("HEARTBEAT %d at %s", ++n, new Date().toString()));
-                }
-            }
-        };
-        new Thread(broadcaster).start();
+//        Runnable broadcaster = new Runnable() {
+//            @Override
+//            public void run() {
+//                int n = 0;
+//
+//                while (true) {
+//                    try {
+//                        Thread.sleep(10000);
+//                    } catch (InterruptedException e) {
+//                        e.printStackTrace();
+//                    }
+//                    connectionManager.broadcast(String.format("HEARTBEAT %d at %s", ++n, new Date().toString()));
+//                }
+//            }
+//        };
+//        new Thread(broadcaster).start();
 
         /**
          * Process incoming traffic from clients; generate outgoing traffic...

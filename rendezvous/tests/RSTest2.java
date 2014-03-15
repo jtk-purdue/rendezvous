@@ -3,7 +3,7 @@
  */
 public class RSTest2 {
     final static String serverLocation = "localhost";
-    final static int portLocation = 1111;
+    final static int portLocation = 1337;
 
     public static void main(String args[]) {
         new RSTest2().testBroadcastMode();
