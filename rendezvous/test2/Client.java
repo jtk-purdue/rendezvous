@@ -11,15 +11,17 @@ public class Client extends Thread implements Observer {
 
     public Client(String name, String host, int port) {
         this.name = name;
-        this.connector = new Connector(host, port, String.format("connect safewalk %s", name), this);
+        this.connector = new Connector(host, port, String.format("connect %s", name), this);
     }
 
     public void run() {
         int c = 0;
 
+
+
         while (running) {
             try {
-                Thread.sleep(5000);
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -32,7 +34,7 @@ public class Client extends Thread implements Observer {
     @Override
     public void update(Observable o, Object arg) {
         String line = (String) arg;
-        System.out.printf("CLIENT %s: %s\n", name, line);
+        System.out.printf("CLIENT %s received: %s\n", name, line);
         String[] fields = line.split(" ");
         if (fields[0].equals("exit"))
             running = false;

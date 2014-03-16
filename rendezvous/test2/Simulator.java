@@ -19,7 +19,7 @@ public class Simulator extends Thread implements Observer {
 
         while (running) {
             try {
-                Thread.sleep(3000);
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -35,7 +35,9 @@ public class Simulator extends Thread implements Observer {
         String line = (String) arg;
         System.out.printf("SIM: %s\n", line);
         String[] fields = line.split(" ");
-        if (fields[0].equals("server") && fields[1].equals("beat") && fields[2].equals("3"))
+        if (fields[1].equals("connect"))
+            connector.writeLine(String.format("=%s=Hello %s", fields[0], fields[2].toUpperCase()));
+        else if (fields[0].equals("server") && fields[1].equals("beat") && fields[2].equals("5"))
             running = false;
     }
 }

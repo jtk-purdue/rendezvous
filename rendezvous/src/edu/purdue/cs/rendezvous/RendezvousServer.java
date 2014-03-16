@@ -91,21 +91,30 @@ public class RendezvousServer {
             try {
                 Message message = connectionManager.getNextRawMessage();
 
-                // TODO: Deal with new connections and closed connections in hashmap
-
-                if (message.getString() == null) { // connection closed
+                // If the message string is empty, the connection is closed...
+                if (message.getString() == null) {
                     logger.info(String.format("Connection to %s closed", message.getRemote()));
                     if (message.getRemote().equals(server)) {
                         server = null;
                         connectionManager.broadcast("server gone");
                     } else if (server != null)
                         connectionManager.send(server, String.format("server %s closed", message.getRemote()));
-                } else if (server == null) { // don't have a server yet, check for server
+                }
+                // else if we don't have a server yet, check for it...
+                else if (server == null) {
                     if (message.getString().equals("server"))
                         server = message.getRemote();
-                } else {
+                }
+                // else it is a regular packet...
+                else {
                     if (message.getRemote().equals(server)) {
-                        connectionManager.broadcast(message.getString());
+                        // packet from server, is it directed or broadcast?
+                        String s = message.getString();
+                        if (s.startsWith("=")) { // directed message
+                            String[] fields = s.split("=");
+                            connectionManager.send(fields[1], fields[2]);
+                        } else // else broadcast
+                            connectionManager.broadcast(message.getString());
                     } else {
                         connectionManager.send(server, message.getRemote() + " " + message.getString());
                     }
