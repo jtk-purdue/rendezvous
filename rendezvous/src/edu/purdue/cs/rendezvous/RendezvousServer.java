@@ -96,9 +96,9 @@ public class RendezvousServer {
                     logger.info(String.format("Connection to %s closed", message.getRemote()));
                     if (message.getRemote().equals(server)) {
                         server = null;
-                        connectionManager.broadcast("server gone");
+                        connectionManager.broadcast("reset");
                     } else if (server != null)
-                        connectionManager.send(server, String.format("server %s closed", message.getRemote()));
+                        connectionManager.send(server, message.getRemote() + " reset");
                 }
                 // else if we don't have a server yet, check for it...
                 else if (server == null) {
