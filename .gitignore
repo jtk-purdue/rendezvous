@@ -3,3 +3,4 @@
 rendezvous/src/trace*
 restart.sh
 rendezvous.out
+out/
