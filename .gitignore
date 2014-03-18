@@ -2,3 +2,4 @@
 *.class
 rendezvous/src/trace*
 restart.sh
+rendezvous.out
